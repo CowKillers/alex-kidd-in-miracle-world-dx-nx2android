@@ -34,7 +34,7 @@ no Galaxy S23, nos modos retrô e DX — provado pelas capturas no README.
 
 ## Importante — leia antes de instalar
 
-- **O APK sozinho não é o jogo.** Gere o seu próprio pacote de dados
+- **APK funcional disponibilizado nesta release.** Gere o seu próprio pacote de dados
   com o porter do nx2android, a partir do seu próprio NSP e das suas
   próprias chaves, e copie o conteúdo solto para
   `Android/data/org.nx2a.t010025d01221a000/files/` (RomFS, mods,

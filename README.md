@@ -20,8 +20,8 @@ emulador.
 `org.nx2a.t010025d01221a000`, versionCode 2 / versão do jogo 1.4.0,
 única permissão VIBRATE).
 
-O APK sozinho **não** é o jogo: ele é só o executável do port. Sem os
-dados do jogo na pasta certa, ele não joga. Veja o tutorial abaixo.
+APK funcional disponibilizado na release alpha01 — veja o tutorial
+abaixo para instalar e colocar os dados do jogo no lugar certo.
 
 ## Capturas (Galaxy S23, 60 FPS)
 
