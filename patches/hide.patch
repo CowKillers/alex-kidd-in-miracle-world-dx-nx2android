@@ -1,0 +1,204 @@
+diff --git a/nxnative/dm/android/front_android.c b/nxnative/dm/android/front_android.c
+index 00df577..91cfb33 100644
+--- a/nxnative/dm/android/front_android.c
++++ b/nxnative/dm/android/front_android.c
+@@ -55,6 +55,9 @@ static _Atomic int g_set_opacity = 60;   // the gamepad's opacity, percent (OV_O
+ // the player's own layout (overlay_layout.h dm_overlay_custom): [0] the saved one (settings.txt ui= rows), [1] the layout editor's while it is open; per layout
+ // and control: x + 1, y + 1 in 1/10000 of the window's width and height (0 = the layout's place), the size factor in 1/1000 (0 = 1)
+ static _Atomic int g_cust[2][2][DM_AOV_N][3], g_cust_ver, g_edit;
++// Hide/Show (layout editor): [0] the saved hidden set, [1] the editor's working copy; per layout, per control (1 = hidden). The menu button is never
++// set: hiding it would lock the player out of the pause menu and the editor itself. All zero at start, so every control is shown until the player hides one.
++static _Atomic int g_hide[2][2][DM_AOV_N];
+ static const char *const LAYOUT_NAMES[2] = {"tablet", "phone"};
+ static int ctl_named(const char *n) { for (int i = 0; i < OV_N; i++) if (!strcmp(OV_LAYOUTS[0][i].name, n)) return i; return -1; }
+ int dm_opmode(void); void dm_set_opmode(int m);   // hle_oe.c: 0 handheld, 1 docked; a change reaches the game as the Switch's operation mode notification
+@@ -65,7 +68,13 @@ static void settings_load(void) {
+         else if (sscanf(line, "fps=%d", &v) == 1) atomic_store(&g_set_fps, v != 0);
+         else if (sscanf(line, "docked=%d", &v) == 1) setenv("DM_OPMODE", v ? "1" : "0", 1);   // over env.txt's: the host reads it once, at its first query
+         else if (sscanf(line, "opacity=%d", &v) == 1) atomic_store(&g_set_opacity, v < OV_OPACITY_MIN ? OV_OPACITY_MIN : v > OV_OPACITY_MAX ? OV_OPACITY_MAX : v);
+-        else if (!strncmp(line, "ui=", 3)) {   // ui=<layout>,<control>,<x>,<y>,<size>: x, y in 1/10000 of the window (-1 the layout's place), size in 1/1000
++        else if (!strncmp(line, "hidden=", 7)) {   // hidden=<layout>,<control>: one line per control the player hid in the layout editor (never the menu button)
++            char lay[16], name[32]; int l, i;
++            if (sscanf(line + 7, "%15[^,],%31s", lay, name) != 2 || (i = ctl_named(name)) < 0) continue;
++            for (l = 0; l < 2 && strcmp(lay, LAYOUT_NAMES[l]); l++) {}
++            if (l == 2 || OV_LAYOUTS[0][i].kind == OV_MENU) continue;
++            atomic_store(&g_hide[0][l][i], 1);
++        } else if (!strncmp(line, "ui=", 3)) {   // ui=<layout>,<control>,<x>,<y>,<size>: x, y in 1/10000 of the window (-1 the layout's place), size in 1/1000
+             char lay[16], name[32]; int x, y, z, l, i;
+             if (sscanf(line + 3, "%15[^,],%31[^,],%d,%d,%d", lay, name, &x, &y, &z) != 5 || (i = ctl_named(name)) < 0) continue;
+             for (l = 0; l < 2 && strcmp(lay, LAYOUT_NAMES[l]); l++) {}
+@@ -86,6 +95,8 @@ static void settings_save(void) {
+         _Atomic int *c = g_cust[0][l][i]; int x = atomic_load(&c[0]), y = atomic_load(&c[1]), z = atomic_load(&c[2]);
+         if ((x && y) || z) fprintf(f, "ui=%s,%s,%d,%d,%d\n", LAYOUT_NAMES[l], OV_LAYOUTS[0][i].name, x && y ? x - 1 : -1, x && y ? y - 1 : -1, z ? z : 1000);
+     }
++    for (int l = 0; l < 2; l++) for (int i = 0; i < OV_N; i++)   // the hidden set, beside the layout rows: the menu rewrites this file whole, so omitting these would unhide everything on the next save
++        if (atomic_load(&g_hide[0][l][i])) fprintf(f, "hidden=%s,%s\n", LAYOUT_NAMES[l], OV_LAYOUTS[0][i].name);
+     fclose(f); rename(tmp, p);
+ }
+ void dm_haptics_android_start(ANativeActivity *act, int on); void dm_haptics_android_tap(void); void dm_haptics_android_device(int id); void dm_haptics_android_set(int on);
+@@ -166,6 +177,10 @@ int dm_overlay_custom(int layout, int ctl, float *x, float *y, float *s) {   //
+     *x = (cx - 1) / 10000.0f; *y = (cy - 1) / 10000.0f; return 1;
+ }
+ int dm_overlay_custom_ver(void) { return atomic_load(&g_cust_ver); }
++int dm_overlay_hidden(int layout, int ctl) {   // (the editor's working copy while it is open, else the saved one)
++    if (layout < 0 || layout > 1 || ctl < 0 || ctl >= OV_N) return 0;
++    return atomic_load(&g_hide[atomic_load(&g_edit) ? 1 : 0][layout][ctl]);
++}
+ float dm_overlay_opacity(void) { return atomic_load(&g_set_opacity) / 100.0f; }
+ static void cust_place(int set, int l, int i, float x, float y) { atomic_store(&g_cust[set][l][i][0], 1 + (int)lroundf(x * 10000)); atomic_store(&g_cust[set][l][i][1], 1 + (int)lroundf(y * 10000)); }
+ int64_t dm_overlay_pressed(int ctl, uint64_t bit) {
+@@ -192,6 +207,7 @@ static int ctl_at(float x, float y, float W, float H) {   // the control under (
+     if (!vis) return -1;   // a controller is attached: every touch is the game's
+     for (int i = 0; i < OV_N; i++) {
+         const ov_ctl *c = &OV_CTLS[i]; if (!shown && c->kind != OV_MENU) continue;   // hidden: only the menu button answers
++        if (!atomic_load(&g_edit) && c->kind != OV_MENU && dm_overlay_hidden(dm_overlay_layout(), i)) continue;   // player-hidden: no touch where it was (in the editor it still answers, so it can be picked and shown again)
+         float b[4]; ov_box(c, W, H, b);
+         float d = ov_sdf(c, b, x - b[0], y - b[1]), reach = ov_reach(c, b, H), m = fminf(b[2], b[3]);
+         if (d < reach && (d + m) / (m + reach) < bd) { bd = (d + m) / (m + reach); best = i; }   // between two, the one the touch is deeper into, for its size
+@@ -489,19 +505,21 @@ int dm_save_rows(ov_srow rows[OVM_ROWS]) {   // (gfx_vk_present.c ov_save_panel)
+ }
+ 
+ // ---- the layout editor (overlay_layout.h OVE_*): opened from the menu, the game stays held. A finger on a control chooses it and drags it; a second finger
+-// pinches it bigger or smaller; - and + resize the chosen control, or every control when none is chosen; Reset puts the layout's places and sizes back;
+-// Save keeps the editor's layout (settings.txt, the next start too) and Cancel throws it away, asking first when something changed. Either goes back to the
+-// menu. A controller: + saves, B cancels; in the prompt A throws away and B goes back to editing. It edits the layout in use (tablet or phone) ----
++// pinches it bigger or smaller; - and + resize the chosen control, or every control when none is chosen; Hide toggles the chosen control's hidden state
++// (a hidden control is drawn dimmed in the editor so it can be picked and shown again, and is neither drawn nor touchable in the game); Show all clears
++// every hidden control in the layout; Reset puts the layout's places, sizes and hidden set back; Save keeps the editor's layout (settings.txt, the next
++// start too) and Cancel throws it away, asking first when something changed. Either goes back to the menu. A controller: + saves, B cancels; in the prompt
++// A throws away and B goes back to editing. It edits the layout in use (tablet or phone) ----
+ static struct { int ptr, ptr2, sel, held, prompt, dirty, bdown, bar; float gx, gy, d0, s0; } g_ed = {-1, -1, -1, -1};   // bar: ptr went down on the toolbar or prompt
+ static void ed_publish(void) { atomic_store(&g_ed_st, g_ed.prompt | g_ed.dirty << 1 | (g_ed.held + 1) << 4 | (g_ed.sel + 1) << 8); dm_overlay_redraw(); }
+ static void ed_open(void) {
+-    for (int l = 0; l < 2; l++) for (int i = 0; i < OV_N; i++) for (int k = 0; k < 3; k++) atomic_store(&g_cust[1][l][i][k], atomic_load(&g_cust[0][l][i][k]));
++    for (int l = 0; l < 2; l++) for (int i = 0; i < OV_N; i++) { for (int k = 0; k < 3; k++) atomic_store(&g_cust[1][l][i][k], atomic_load(&g_cust[0][l][i][k])); atomic_store(&g_hide[1][l][i], atomic_load(&g_hide[0][l][i])); }
+     g_ed.ptr = g_ed.ptr2 = g_ed.sel = g_ed.held = g_ed.bdown = -1; g_ed.prompt = g_ed.dirty = g_ed.bar = 0; g_menu_ptr = -1;
+     atomic_store(&g_edit, 1); atomic_fetch_add(&g_cust_ver, 1); ed_publish();
+     LOG("[overlay] layout editor opened (%s layout)", LAYOUT_NAMES[dm_overlay_layout()]);
+ }
+ static void ed_close(int save) {
+-    if (save) for (int l = 0; l < 2; l++) for (int i = 0; i < OV_N; i++) for (int k = 0; k < 3; k++) atomic_store(&g_cust[0][l][i][k], atomic_load(&g_cust[1][l][i][k]));
++    if (save) for (int l = 0; l < 2; l++) for (int i = 0; i < OV_N; i++) { for (int k = 0; k < 3; k++) atomic_store(&g_cust[0][l][i][k], atomic_load(&g_cust[1][l][i][k])); atomic_store(&g_hide[0][l][i], atomic_load(&g_hide[1][l][i])); }
+     atomic_store(&g_edit, 0); atomic_fetch_add(&g_cust_ver, 1); g_menu_ptr = -1; atomic_store(&g_menu_hi, -1);
+     if (save) settings_save();
+     dm_haptics_android_tap(); dm_overlay_redraw();
+@@ -513,7 +531,11 @@ static void ed_resize(int l, int i, float s) { s = fminf(fmaxf(s, OVE_SCALE_MIN)
+ static void ed_do(int b) {
+     int l = dm_overlay_layout();
+     if (b == OVE_SMALLER || b == OVE_BIGGER) { float f = b == OVE_BIGGER ? 1.1f : 1 / 1.1f; for (int i = 0; i < OV_N; i++) if (g_ed.sel < 0 || i == g_ed.sel) ed_resize(l, i, ed_size(l, i) * f); }
+-    else if (b == OVE_RESET) { for (int i = 0; i < OV_N; i++) for (int k = 0; k < 3; k++) atomic_store(&g_cust[1][l][i][k], 0); g_ed.sel = -1; g_ed.dirty = 1; }
++    else if (b == OVE_HIDE) {   // toggle on the chosen control only; nothing with none chosen, never the menu button (it opens the pause menu and this editor)
++        if (g_ed.sel >= 0 && OV_LAYOUTS[l][g_ed.sel].kind != OV_MENU) { atomic_store(&g_hide[1][l][g_ed.sel], !atomic_load(&g_hide[1][l][g_ed.sel])); g_ed.dirty = 1; }
++    }
++    else if (b == OVE_SHOWALL) { for (int i = 0; i < OV_N; i++) atomic_store(&g_hide[1][l][i], 0); g_ed.dirty = 1; }
++    else if (b == OVE_RESET) { for (int i = 0; i < OV_N; i++) { for (int k = 0; k < 3; k++) atomic_store(&g_cust[1][l][i][k], 0); atomic_store(&g_hide[1][l][i], 0); } g_ed.sel = -1; g_ed.dirty = 1; }
+     else if (b == OVE_CANCEL) { ed_cancel(); return; }
+     else if (b == OVE_SAVE) { ed_close(1); return; }
+     else if (b == OVE_DISCARD) { ed_close(0); return; }
+diff --git a/nxnative/dm/android/gfx_vk_present.c b/nxnative/dm/android/gfx_vk_present.c
+index 816c478..f60259e 100644
+--- a/nxnative/dm/android/gfx_vk_present.c
++++ b/nxnative/dm/android/gfx_vk_present.c
+@@ -70,6 +70,7 @@ __attribute__((weak)) int dm_save_note(char *out, int cap) { if (cap > 0) out[0]
+ __attribute__((weak)) int dm_save_rows(ov_srow rows[OVM_ROWS]) { (void)rows; return 0; }
+ __attribute__((weak)) int dm_overlay_custom(int layout, int ctl, float *x, float *y, float *s) { (void)layout; (void)ctl; (void)x; (void)y; *s = 1; return 0; }
+ __attribute__((weak)) int dm_overlay_custom_ver(void) { return 0; }
++__attribute__((weak)) int dm_overlay_hidden(int layout, int ctl) { (void)layout; (void)ctl; return 0; }   // front_android.c: 1 when the player hid this control in this layout
+ __attribute__((weak)) float dm_overlay_opacity(void) { return 0.6f; }
+ __attribute__((weak)) int dm_overlay_layout(void) { return 0; }
+ __attribute__((weak)) int dm_text_entry(char *title, int tcap, char *text, int xcap, int *sel, int *shift) { (void)title; (void)tcap; (void)text; (void)xcap; (void)sel; (void)shift; return 0; }
+@@ -362,10 +363,11 @@ static const char *ov_ctl_name(const ov_ctl *c) {
+ static void ov_edit_panel(const ov_canvas *cv, int st) {
+     float tb[4], pr[4]; ov_ed_rects(tb, pr);
+     int held = (st >> 4 & 15) - 1, sel = (st >> 8 & 255) - 1;
+-    static const char *const words[OVE_ALL] = {"-", "+", "Reset", "Cancel", "Save", "Discard", "Keep editing"};
++    static const char *const words[OVE_ALL] = {"-", "+", "Hide", "Show all", "Reset", "Cancel", "Save", "Discard", "Keep editing"};
+     cv_rrect(cv, tb[0], tb[1], tb[0] + tb[2], tb[1] + tb[3], tb[3] * 0.14f, C_BG);
+     char hint[96];
+-    if (sel >= 0 && sel < OV_N) snprintf(hint, sizeof hint, "%s: drag, pinch, - +", ov_ctl_name(&OV_CTLS[sel]));   // (short: 2x-scale letters on a phone)
++    if (sel >= 0 && sel < OV_N && dm_overlay_hidden(dm_overlay_layout(), sel)) snprintf(hint, sizeof hint, "%s: hidden, Hide to show", ov_ctl_name(&OV_CTLS[sel]));
++    else if (sel >= 0 && sel < OV_N) snprintf(hint, sizeof hint, "%s: drag, pinch, - +", ov_ctl_name(&OV_CTLS[sel]));   // (short: 2x-scale letters on a phone)
+     else snprintf(hint, sizeof hint, "Drag to move, pinch to resize");
+     int hs = (int)fmaxf(1, roundf(tb[3] * 0.17f / 7)); while (hs > 1 && cv_text_w(hint, hs) > tb[2] * 0.94f) hs--;
+     cv_text(cv, tb[0] + (tb[2] - cv_text_w(hint, hs)) / 2, tb[1] + tb[3] * 0.21f, hint, hs, sel >= 0 ? C_WHITE : C_DIM);
+@@ -412,6 +414,7 @@ static void ov_raster(uint8_t *px, uint32_t w, uint32_t h, uint32_t sh) {
+     for (int i = 0; i < OV_N && g_tt[g_ov.lay].ready != 1; i++) {   // (with a theme the controls are its sprites: the static layer stays empty)
+         const ov_ctl *c = &OV_CTLS[i]; float b[4]; ov_box(c, (float)w, (float)h, b);
+         if (c->kind == OV_MENU) continue;   // a sprite only
++        if (dm_overlay_hidden(dm_overlay_layout(), i)) continue;   // player-hidden: no outline in the static layer (the editor still frames it, so it stays pickable there)
+         if (c->kind == OV_DPAD) {
+             for (int k = 0; k < 4; k++) { float ox, oy, dr; ov_dpad_dir(k, &ox, &oy, &dr); ov_circle(px, w, h, b[0] + ox * b[2], b[1] + oy * b[2], dr * b[2], 2.5f); }
+             continue;
+@@ -472,18 +475,20 @@ static void ov_fps(VkCommandBuffer cb, int64_t now) {
+         float u = (float)(c - OV_FPS_CHARS) * ov_fps_cell(); ov_rect(cb, x, m + pad, x + cw, m + pad + ch, u, gy, u + ov_fps_cell(), gy + g_ov.gh, 1);
+     }
+ }
+-static void ov_theme_draw(VkCommandBuffer cb, const ov_theme *t, float alpha) {   // (alpha: the player's opacity; each control at its own size factor)
++static void ov_theme_draw(VkCommandBuffer cb, const ov_theme *t, float alpha, int edit) {   // (alpha: the player's opacity; each control at its own size factor; edit: the layout editor, where hidden controls draw dimmed so they stay pickable)
+     float W = (float)g_sext.width, H = (float)g_sext.height, k = H / t->dh * dm_overlay_scale(), b[4]; const ov_ctl *L = OV_LAYOUTS[t->layout];
+-    for (int j = 0; j < t->n; j++) if (t->sp[j].state == OVT_DECOR) { const ov_ctl *c = &L[t->sp[j].ctl]; ov_box(c, W, H, b); ov_tsp(cb, t, &t->sp[j], b[0], b[1], k * ov_cscale(c), alpha); }
++    for (int j = 0; j < t->n; j++) if (t->sp[j].state == OVT_DECOR) { const ov_ctl *c = &L[t->sp[j].ctl]; if (dm_overlay_hidden(t->layout, t->sp[j].ctl) && !edit) continue; ov_box(c, W, H, b); ov_tsp(cb, t, &t->sp[j], b[0], b[1], k * ov_cscale(c), dm_overlay_hidden(t->layout, t->sp[j].ctl) ? alpha * 0.35f : alpha); }
+     for (int i = 0; i < OV_N; i++) {
+         const ov_ctl *c = &L[i]; if (c->kind == OV_MENU) continue;
++        int hid = dm_overlay_hidden(t->layout, i); if (hid && !edit) continue;   // player-hidden: neither sprite in the game (in the editor it draws dimmed, below)
+         ov_box(c, W, H, b); float kc = k * ov_cscale(c); int stick = c->kind == OV_STICK_L || c->kind == OV_STICK_R, held = c->kind != OV_DPAD && dm_overlay_pressed(i, 0) != 0;
+         float kx = 0, ky = 0; if (stick) { dm_overlay_knob(c->kind == OV_STICK_R, &kx, &ky); kx *= t->travel * kc; ky *= t->travel * kc; }
++        float ca = hid ? alpha * 0.35f : alpha;
+         for (int j = 0; j < t->n; j++) {
+             const ov_tsprite *s = &t->sp[j]; if (s->ctl != i || s->state == OVT_DECOR) continue;
+-            if (s->state == OVT_KNOB) { ov_tsp(cb, t, s, b[0] + kx, b[1] + ky, kc, alpha); continue; }
++            if (s->state == OVT_KNOB) { ov_tsp(cb, t, s, b[0] + kx, b[1] + ky, kc, ca); continue; }
+             int on = c->kind == OV_DPAD ? s->dir >= 0 && dm_overlay_pressed(i, OV_DPAD_BITS[s->dir]) != 0 : held;
+-            if (s->state == (on ? OVT_HELD : OVT_IDLE)) ov_tsp(cb, t, s, b[0], b[1], kc, alpha);
++            if (s->state == (on ? OVT_HELD : OVT_IDLE)) ov_tsp(cb, t, s, b[0], b[1], kc, ca);
+         }
+     }
+ }
+@@ -513,11 +518,12 @@ static void ov_render(VkCommandBuffer cb, int mode, int menu, int fps) {
+     const ov_theme *th = g_tt[g_ov.lay].ready == 1 ? g_tt[g_ov.lay].t : NULL; int tbound = 0;   // (the theme's texture bound)
+     if ((menu < 0 || edit) && mode == 1 && th) {
+         vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, g_ov.layout, 0, 1, &g_tt[g_ov.lay].set, 0, NULL); tbound = 1;
+-        ov_theme_draw(cb, th, op);
++        ov_theme_draw(cb, th, op, edit);
+     } else if ((menu < 0 || edit) && mode == 1) {   // without a theme: the outlines (their opacity: 60% looks as they always did), the knobs and the glows
+         float fo = fminf(1, op / 0.6f);
+         ov_rect(cb, 0, 0, W, H, 0, 0, (float)g_ov.w, (float)g_ov.h, fo);
+         for (int i = 0; i < OV_N; i++) { const ov_ctl *c = &OV_CTLS[i]; float b[4]; ov_box(c, W, H, b);
++            if (!edit && dm_overlay_hidden(dm_overlay_layout(), i)) continue;   // player-hidden: no knob or glow in the game (the editor still frames it, below)
+             if (c->kind == OV_STICK_L || c->kind == OV_STICK_R) {
+                 float dx, dy; dm_overlay_knob(c->kind == OV_STICK_R, &dx, &dy); float travel = b[2] * (1 - OV_KNOB);   // the knob's edge reaches the ring
+                 ov_sprite(cb, i, b[0] + dx * travel, b[1] + dy * travel, b[2] * OV_KNOB, fo);
+diff --git a/nxnative/dm/android/overlay_layout.h b/nxnative/dm/android/overlay_layout.h
+index 21e19a2..b4c7308 100644
+--- a/nxnative/dm/android/overlay_layout.h
++++ b/nxnative/dm/android/overlay_layout.h
+@@ -29,6 +29,10 @@ int64_t dm_overlay_pressed(int ctl, uint64_t bit);   // CLOCK_MONOTONIC ns of th
+ // is where the layout puts it; *s is its size factor either way (1 = the layout's)
+ int dm_overlay_custom(int layout, int ctl, float *x, float *y, float *s);
+ int dm_overlay_custom_ver(void);   // counts the changes (the theme-less drawing is rasterized again)
++// Hide/Show (layout editor): 1 when the player hid this control in this layout, 0 when it is shown. While the editor is open it answers from the
++// editor's working copy, otherwise from the saved one; a hidden control is never the menu button (hiding it would lock the player out of the pause menu).
++// Kept in settings.txt as hidden=<layout>,<control> lines, one per hidden control; no line means shown, so every control starts visible.
++int dm_overlay_hidden(int layout, int ctl);
+ float dm_overlay_opacity(void);    // the gamepad's opacity, 0.2..0.8 (the menu's Opacity slider)
+ static inline int ov_index(const ov_ctl *c, int *layout) { int k = (int)(c - &OV_LAYOUTS[0][0]); *layout = k / OV_N; return k % OV_N; }   // c: in OV_LAYOUTS
+ static inline float ov_cscale(const ov_ctl *c) { int l, i = ov_index(c, &l); float x, y, s = 1; dm_overlay_custom(l, i, &x, &y, &s); return s; }
+@@ -121,7 +125,8 @@ static inline int ov_menu_track_value(float x, const float p[4], int row) {   //
+ // ---- the layout editor (front_android.c, from the menu's Edit layout): the game stays held; every control (the menu button too) can be dragged, and
+ // resized by a pinch or the toolbar's - and + (the tapped control, or all of them when none is). A toolbar under the top edge: its hint line and buttons;
+ // Cancel with changes asks first, in a prompt in the middle. Both are drawn into the menu panel's raster (gfx_vk_present.c ov_edit_panel) ----
+-enum { OVE_SMALLER, OVE_BIGGER, OVE_RESET, OVE_CANCEL, OVE_SAVE, OVE_N, OVE_DISCARD = OVE_N, OVE_KEEP, OVE_ALL };
++enum { OVE_SMALLER, OVE_BIGGER, OVE_HIDE, OVE_SHOWALL, OVE_RESET, OVE_CANCEL, OVE_SAVE, OVE_N, OVE_DISCARD = OVE_N, OVE_KEEP, OVE_ALL };
++// OVE_HIDE toggles the chosen control's hidden state (nothing with no control chosen, never the menu button); OVE_SHOWALL clears every hidden control in the layout being edited.
+ // the editor's state in dm_menu_state: bit 17, bit 0 the prompt is open, bit 1 something changed, bits 4..7 the button held + 1, bits 8..15 the chosen control + 1
+ #define OVE_ST 0x20000
+ #define OVE_SCALE_MIN 0.5f   // a control's size factor
+@@ -133,7 +138,7 @@ static inline void ov_ed_prompt_rect(float W, float H, float r[4]) {   // the di
+     float s = ov_menu_scale(); r[2] = fminf(0.75f * H * s, W * 0.9f); r[3] = 0.30f * H * s; r[0] = (W - r[2]) / 2; r[1] = (H - r[3]) / 2;
+ }
+ static inline void ov_ed_button(int i, const float p[4], float b[4]) {   // button i in its panel p (the toolbar's, or the prompt's for OVE_DISCARD, OVE_KEEP)
+-    static const float x0[OVE_ALL] = {0.15f, 1.30f, 2.80f, 5.25f, 7.70f, 0.50f, 5.20f}, w[OVE_ALL] = {1.0f, 1.0f, 2.30f, 2.30f, 2.15f, 4.30f, 4.30f};
++    static const float x0[OVE_ALL] = {0.05f, 0.75f, 1.45f, 2.70f, 4.75f, 6.10f, 7.55f, 0.50f, 5.20f}, w[OVE_ALL] = {0.65f, 0.65f, 1.20f, 2.00f, 1.30f, 1.40f, 2.35f, 4.30f, 4.30f};
+     float u = p[2] / 10; b[0] = p[0] + x0[i] * u; b[2] = w[i] * u;
+     if (i < OVE_N) { b[1] = p[1] + p[3] * 0.42f; b[3] = p[3] * 0.52f; } else { b[1] = p[1] + p[3] * 0.50f; b[3] = p[3] * 0.36f; }
+ }
