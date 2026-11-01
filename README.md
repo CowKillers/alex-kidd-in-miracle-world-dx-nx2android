@@ -23,6 +23,10 @@ emulador.
 APK funcional disponibilizado na release alpha01 — veja o tutorial
 abaixo para instalar e colocar os dados do jogo no lugar certo.
 
+## Vídeo
+
+🎬 [Gameplay no Android — Alex Kidd in Miracle World DX](https://youtu.be/NU_LPBY7MpM)
+
 ## Capturas (Galaxy S23, 60 FPS)
 
 ![Gameplay no modo retrô](screenshots/01-retro-gameplay.jpg)
@@ -295,6 +299,13 @@ imprime o SHA-256 do signer ao empacotar; com `apksigner verify
 - Hide/Show no editor: implementado e buildado, **não testado em
   aparelho** até a publicação deste alpha (o fluxo completo no S23 é
   o que falta validar: esconder, salvar, trazer de volta, persistir).
+
+## Grupo de testes e apoio
+
+💬 [Grupo no Telegram — testes e apoio](https://t.me/+nPJwnuKuAh5iNzhh)
+
+Quem quiser testar e apoiar o projeto, entra por lá. Novidades, capturas e
+próximos passos são publicados primeiro no grupo.
 
 ## O que este repositório NÃO contém
 
