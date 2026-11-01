@@ -15,12 +15,13 @@ emulador.
 
 ## Download
 
-📦 **[Release alpha01](https://github.com/CowKillers/alex-kidd-in-miracle-world-dx-nx2android/releases/tag/alpha01)**
-— arquivo `AlexKiddInMiracleWorldDx-hide.apk` (1,9 MB, pacote
-`org.nx2a.t010025d01221a000`, versionCode 2 / versão do jogo 1.4.0,
-única permissão VIBRATE).
+📦 **[Release alpha02](https://github.com/CowKillers/alex-kidd-in-miracle-world-dx-nx2android/releases/tag/alpha02)**
+— arquivo `AlexKiddInMiracleWorldDx-launcher-v12.apk` (2,5 MB, pacote
+`org.nx2a.t010025d01221a000`, versionCode 14 / versão do jogo 1.4.0,
+única permissão VIBRATE). É o launcher com o jogo dentro — veja
+`RELEASE_NOTES-alpha02.md` para o que mudou em relação à alpha01.
 
-APK funcional disponibilizado na release alpha01 — veja o tutorial
+APK funcional disponibilizado na release alpha02 — veja o tutorial
 abaixo para instalar e colocar os dados do jogo no lugar certo.
 
 ## Vídeo
@@ -50,8 +51,8 @@ abaixo para instalar e colocar os dados do jogo no lugar certo.
 
 ### Passo 1 — Instale o APK
 
-1. Baixe `AlexKiddInMiracleWorldDx-hide.apk` da
-   [release alpha01](https://github.com/CowKillers/alex-kidd-in-miracle-world-dx-nx2android/releases/tag/alpha01).
+1. Baixe `AlexKiddInMiracleWorldDx-launcher-v12.apk` da
+   [release alpha02](https://github.com/CowKillers/alex-kidd-in-miracle-world-dx-nx2android/releases/tag/alpha02).
 2. Abra o arquivo no celular e permita "instalar apps desconhecidos"
    quando o Android pedir. O app aparece como
    **Alex Kidd in Miracle World DX**.
@@ -167,8 +168,8 @@ que faz um APK novo instalar por cima do anterior. Guarde uma cópia
 dele em lugar seguro e **nunca o compartilhe nem o suba para nenhum
 repositório**: quem perde a chave só consegue instalar o próximo APK
 com desinstalação limpa, que apaga `files/` e os saves. Este
-repositório não contém nenhuma chave, e a chave usada na release
-alpha01 não está aqui.
+repositório não contém nenhuma chave, e a chave usada nas releases
+alpha01 e alpha02 não está aqui.
 
 ### Passo 1 — Clone o nx2android
 
@@ -254,8 +255,8 @@ python3 nxnative/dm/android/apk/mkapk.py \
 ```
 
 Regras do versionCode: **tem que ser maior que o do APK já instalado**
-para instalar por cima — a alpha01 é versionCode 2, então o próximo
-build usa 3 ou mais, com o mesmo pacote e a mesma chave de assinatura.
+para instalar por cima — a alpha02 é versionCode 14, então o próximo
+build usa 15 ou mais, com o mesmo pacote e a mesma chave de assinatura.
 Confira no APK final: mesmo pacote, mesma assinatura do APK que já
 estava instalado, e o `libdmhost.so` novo dentro do APK (o `mkapk.py`
 imprime o SHA-256 do signer ao empacotar; com `apksigner verify
@@ -315,8 +316,8 @@ próximos passos são publicados primeiro no grupo.
 - Nenhuma chave (`prod.keys`, chave de assinatura ou qualquer arquivo
   de chave).
 - Nenhum log, save ou `env.txt` de aparelho.
-- O APK **não** está neste repositório: ele vai apenas como asset da
-  release alpha01, depois de auditado.
+- O APK **não** está neste repositório: ele vai apenas como asset de
+  uma release, depois de auditado.
 
 Cada pessoa precisa do próprio dump do jogo e das próprias chaves. Não
 distribua arquivos do jogo nem chaves.
