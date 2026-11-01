@@ -23,12 +23,16 @@ estes 3 arquivos:
 Na raiz do clone do nx2android (v0.2.0, HEAD `ba7499a`):
 
 ```sh
-git apply patches/hide.patch
+# copie hide.patch deste repositório para dentro do clone e aplique:
+cp /caminho/para/alex-kidd-in-miracle-world-dx-nx2android/patches/hide.patch .
+git apply hide.patch
 git status --porcelain
 ```
 
 O `git status` deve mostrar somente os 3 arquivos acima. Se aparecer
 qualquer outro arquivo modificado, não continue — o patch não é esse.
+O patch foi testado aplicando limpo (`git apply --check` + `git apply`)
+num clone limpo em `ba7499a`, antes da publicação.
 
 ## Sem o patch
 

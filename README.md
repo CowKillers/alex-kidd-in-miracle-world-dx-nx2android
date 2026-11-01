@@ -122,7 +122,9 @@ vem pré-escondido, e quem escolhe o que esconder é você.
 
 ### Requisitos
 
-- Android arm64 com Vulkan 1.2+ e timeline semaphores (para testar).
+- Android arm64 com Vulkan 1.2+ e timeline semaphores (para testar),
+  numa GPU que leia texturas comprimidas BC (Adreno, Xclipse — não
+  Mali ou PowerVR, segundo o próprio nx2android).
 - Android NDK **27.2.12479018**, .NET SDK **10**, Python **3.12**.
 - O porter do nx2android, versão **v0.2.0, HEAD `ba7499a`**
   (https://github.com/shirai91/nx2android).
@@ -130,6 +132,39 @@ vem pré-escondido, e quem escolhe o que esconder é você.
   **Nunca use a chave de assinatura de terceiros**: um APK assinado com
   outra chave não instala por cima do anterior — exige desinstalação
   limpa, que apaga `files/` e os saves.
+
+### Ferramentas — dois caminhos
+
+**Caminho fácil (sem programar):** baixe o pacote do nx2android da
+página de releases do projeto (`nx2android-<versão>-windows-x64.zip`
+ou `-macos-arm64.zip`), abra o app, na aba **Setup** clique em
+**Download missing tools** (baixa NDK, .NET SDK e platform-tools, ~1 GB)
+e configure as suas `prod.keys` — cada linha fica verde. Depois use a
+aba **Port** com a pasta do seu NSP. O guia passo a passo do próprio
+projeto é `packaging/INSTALL.md` no repositório dele.
+
+**Caminho por linha de comando (o que o resto deste tutorial usa):**
+instale você mesmo o NDK 27.2.12479018, o .NET SDK 10 e o Python 3.12,
+e rode os comandos a partir da **raiz do clone** do nx2android — o
+porter é um módulo do próprio repositório, não precisa de `pip install`
+para rodar (`pip install pillow` é opcional: sem ele, o APK sai sem o
+ícone do jogo). O `mkapk.py` não precisa de JDK nem de Android SDK:
+ele monta e assina o APK só com a biblioteca padrão do Python.
+
+### Chave de assinatura — como ela nasce (e por que guardá-la)
+
+O `mkapk.py` (e o porter) usa um arquivo `signing-key.json` na pasta
+do usuário do nx2android (`%APPDATA%\nx2android` no Windows,
+`~/Library/Application Support/nx2android` no Mac,
+`~/.config/nx2android` no Linux; `NX2A_HOME` sobrescreve). **Na
+primeira vez que você empacota um APK, esse arquivo é criado
+automaticamente e reutilizado em todos os ports seguintes** — é ele
+que faz um APK novo instalar por cima do anterior. Guarde uma cópia
+dele em lugar seguro e **nunca o compartilhe nem o suba para nenhum
+repositório**: quem perde a chave só consegue instalar o próximo APK
+com desinstalação limpa, que apaga `files/` e os saves. Este
+repositório não contém nenhuma chave, e a chave usada na release
+alpha01 não está aqui.
 
 ### Passo 1 — Clone o nx2android
 
@@ -165,30 +200,82 @@ Alex Kidd não tem perfil upstream no nx2android: o port é experimental
 e o porter gera um perfil provisório a partir do survey do seu NSP.
 
 ```sh
+# a partir da raiz do clone do nx2android:
 python3 -m porter port <pasta-do-seu-jogo> --experimental
 ```
 
 Use a sua própria pasta com o seu NSP e as suas próprias `prod.keys`
-(configuradas com `porter config keys <caminho>`). O porter gera o APK
-e o pacote de dados (`AlexKiddInMiracleWorldDx-data/`). A referência do
-perfil Android gerado está em `profiles/android.tsv` deste repositório
-(veja `profiles/README.md`).
+(configuradas com `porter config keys <caminho>`, ou com `-k <caminho>`
+no comando). **Onde saem os arquivos (padrão, sem `-o`):** na própria
+pasta do jogo — o APK (`AlexKiddInMiracleWorldDx.apk`) e o pacote de
+dados (`AlexKiddInMiracleWorldDx-data/`); a pasta de build do port é
+`<pasta-do-jogo>/010025D01221A000_build/` (lá dentro ficam `profile/`,
+`logs/`, `shader/` e o host). A referência do perfil Android gerado
+está em `profiles/android.tsv` deste repositório (veja
+`profiles/README.md`). O `game.tsv` do perfil **não** está aqui de
+propósito: o porter experimental o regenera a partir do survey do seu
+NSP — não edite um `game.tsv` à mão esperando que o port o respeite.
 
 ### Passo 4 — (Opcional, para rebuildar só o host) Build + repack
 
-Para rebuildar apenas o host com o Hide, sem refazer o port inteiro:
+Para rebuildar apenas o host com o Hide, sem refazer o port inteiro,
+a partir da raiz do clone do nx2android (com o patch já aplicado):
 
 ```sh
-DM_GAME=010025D01221A000 DM_GAMES_DIR=<pasta-do-build>/profile DM_GAMES_FIRST=1 \
+DM_GAMES_DIR=<pasta-do-jogo>/010025D01221A000_build/profile DM_GAMES_FIRST=1 \
   python3 nxnative/dm/android/build.py --game 010025D01221A000 \
-    --ndk <caminho-do-NDK-27.2.12479018> --lib --release
+    --ndk <caminho-do-NDK-27.2.12479018> --out <pasta-de-saída-do-host> \
+    --lib --release
 ```
 
-Depois reempacote o APK com `nxnative/dm/android/apk/mkapk.py`,
-usando **o seu próprio signer**. Confira no APK final: mesmo pacote
-(`org.nx2a.t010025d01221a000`), mesma assinatura do APK que já estava
-instalado (para instalar por cima), e o `libdmhost.so` novo dentro do
-APK.
+O `.so` sai em `<pasta-de-saída-do-host>/libdmhost.so`. Depois
+reempacote o APK com `nxnative/dm/android/apk/mkapk.py`, usando **o
+seu próprio signer** (o `signing-key.json` da seção acima). Exemplo
+completo, com o tema ergo (sem os assets do tema, o gamepad desenha
+sem tema) e o ícone opcional:
+
+```sh
+python3 nxnative/dm/android/apk/mkapk.py \
+  <pasta-de-saída-do-host>/libdmhost.so \
+  AlexKiddInMiracleWorldDx-hide.apk \
+  ~/.config/nx2android/signing-key.json \
+  --package org.nx2a.t010025d01221a000 \
+  --label "Alex Kidd in Miracle World DX" \
+  --lib dmhost --landscape \
+  --version-code 3 --version-name 1.4.0 --release \
+  --asset overlay/theme.tsv=nxnative/dm/android/themes/ergo/theme.tsv \
+  --asset overlay/phone.png=nxnative/dm/android/themes/ergo/phone.png \
+  --asset overlay/tablet.png=nxnative/dm/android/themes/ergo/tablet.png
+  # --icon <icone-256px.png>  (opcional; sem ele, o ícone padrão do sistema)
+```
+
+Regras do versionCode: **tem que ser maior que o do APK já instalado**
+para instalar por cima — a alpha01 é versionCode 2, então o próximo
+build usa 3 ou mais, com o mesmo pacote e a mesma chave de assinatura.
+Confira no APK final: mesmo pacote, mesma assinatura do APK que já
+estava instalado, e o `libdmhost.so` novo dentro do APK (o `mkapk.py`
+imprime o SHA-256 do signer ao empacotar; com `apksigner verify
+--print-certs`, se você tiver o Android SDK, dá para conferir de novo).
+
+### Editar o projeto — o fluxo de trabalho
+
+- **Editar o host (controles, editor, overlay):** mexa em
+  `nxnative/dm/android/` — é lá que vivem `front_android.c`,
+  `gfx_vk_present.c` e `overlay_layout.h` (o Hide foi todo nesses 3
+  arquivos). Depois rode só o Passo 4 acima: rebuild do host +
+  repack, instale por cima, **sem refazer o port e sem tocar no data
+  pack** — os dados em `files/` continuam lá.
+- **Editar o perfil do jogo:** não há um `game.tsv` pronto neste repo
+  para copiar — o porter o gera no Passo 3. Se quiser ajustar memória
+  ou outro valor do perfil, faça isso no perfil gerado em
+  `<pasta-do-jogo>/010025D01221A000_build/profile/` e rebuild o host
+  com ele, sabendo que os valores do perfil provisório são palpites
+  do survey, não medições de boot.
+- **Debugar:** o log do jogo fica em
+  `Android/data/org.nx2a.t010025d01221a000/files/log.txt` — pegue
+  antes de reabrir o jogo, porque no boot seguinte ele vira
+  `log.prev.txt`. Mudança de comportamento sem mudança no log é
+  hipótese, não prova.
 
 ## Estado atual
 
