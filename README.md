@@ -15,13 +15,14 @@ emulador.
 
 ## Download
 
-📦 **[Release alpha02](https://github.com/CowKillers/alex-kidd-in-miracle-world-dx-nx2android/releases/tag/alpha02)**
-— arquivo `AlexKiddInMiracleWorldDx-launcher-v12.apk` (2,5 MB, pacote
-`org.nx2a.t010025d01221a000`, versionCode 14 / versão do jogo 1.4.0,
+📦 **[Release launcher-0.1](https://github.com/CowKillers/alex-kidd-in-miracle-world-dx-nx2android/releases/tag/launcher-0.1)**
+— arquivo `AlexKiddInMiracleWorldDx-launcher-v16.apk` (7,9 MB, pacote
+`org.nx2a.t010025d01221a000`, versionCode 18 / versão do jogo 1.4.0,
 única permissão VIBRATE). É o launcher com o jogo dentro — veja
-`RELEASE_NOTES-alpha02.md` para o que mudou em relação à alpha01.
+`RELEASE_NOTES-launcher-0.1.md` para o que mudou em relação à alpha02
+(saves no launcher e drivers de GPU com Turnip incluso).
 
-APK funcional disponibilizado na release alpha02 — veja o tutorial
+APK funcional disponibilizado na release launcher-0.1 — veja o tutorial
 abaixo para instalar e colocar os dados do jogo no lugar certo.
 
 ## Vídeo
@@ -51,8 +52,8 @@ abaixo para instalar e colocar os dados do jogo no lugar certo.
 
 ### Passo 1 — Instale o APK
 
-1. Baixe `AlexKiddInMiracleWorldDx-launcher-v12.apk` da
-   [release alpha02](https://github.com/CowKillers/alex-kidd-in-miracle-world-dx-nx2android/releases/tag/alpha02).
+1. Baixe `AlexKiddInMiracleWorldDx-launcher-v16.apk` da
+   [release launcher-0.1](https://github.com/CowKillers/alex-kidd-in-miracle-world-dx-nx2android/releases/tag/launcher-0.1).
 2. Abra o arquivo no celular e permita "instalar apps desconhecidos"
    quando o Android pedir. O app aparece como
    **Alex Kidd in Miracle World DX**.
@@ -255,8 +256,8 @@ python3 nxnative/dm/android/apk/mkapk.py \
 ```
 
 Regras do versionCode: **tem que ser maior que o do APK já instalado**
-para instalar por cima — a alpha02 é versionCode 14, então o próximo
-build usa 15 ou mais, com o mesmo pacote e a mesma chave de assinatura.
+para instalar por cima — a launcher-0.1 é versionCode 18, então o próximo
+build usa 19 ou mais, com o mesmo pacote e a mesma chave de assinatura.
 Confira no APK final: mesmo pacote, mesma assinatura do APK que já
 estava instalado, e o `libdmhost.so` novo dentro do APK (o `mkapk.py`
 imprime o SHA-256 do signer ao empacotar; com `apksigner verify
